@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TrustVault - Secure Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 20px; }
+        .container { max-width: 600px; margin: auto; background: #1e293b; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        input, button { width: 100%; padding: 10px; margin: 8px 0; border-radius: 4px; border: 1px solid #475569; background: #334155; color: white; box-sizing: border-box; }
+        button { background: #2563eb; cursor: pointer; font-weight: bold; }
+        button:hover { background: #1d4ed8; }
+        .hidden { display: none; }
+        pre { background: #0f172a; padding: 10px; border-radius: 4px; overflow-x: auto; color: #34d399; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>🛡️ TrustVault Secure Portal</h2>
+        
+        <!-- Auth Section -->
+        <div id="auth-section">
+            <h3>Sign Up / Sign In</h3>
+            <input type="email" id="email" placeholder="Email address">
+            <input type="password" id="password" placeholder="Password">
+            <button onclick="signup()">Sign Up</button>
+            <button onclick="signin()">Sign In</button>
+            <p id="auth-msg"></p>
+        </div>
+
+        <!-- Dashboard Section -->
+        <div id="dashboard-section" class="hidden">
+            <h3>Vault Dashboard</h3>
+            <p>Logged in successfully! <button onclick="logout()" style="background:#dc2626; width:auto; padding:5px 10px;">Logout</button></p>
+            
+            <h4>Store Encrypted Item</h4>
+            <input type="text" id="vault-title" placeholder="Vault Title (e.g. Bank Credentials)">
+            <input type="text" id="vault-secret" placeholder="Secret Data (e.g. username & password)">
+            <input type="password" id="vault-key" placeholder="Vault Secret Encryption Key">
+            <button onclick="addVault()">Save Encrypted Vault</button>
+
+            <h4>Your Vaults</h4>
+            <button onclick="loadVaults()">Refresh Vault List</button>
+            <div id="vaults-list"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5000/api';
+        let token = localStorage.getItem('token') || '';
+
+        if (token) showDashboard();
+
+        async function signup() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const res = await fetch(`${API_URL}/auth/signup`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            const data = await res.json();
+            document.getElementById('auth-msg').innerText = data.message || data.error;
+        }
+
+        async function signin() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const res = await fetch(`${API_URL}/auth/signin`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            const data = await res.json();
+            if (data.token) {
+                token = data.token;
+                localStorage.setItem('token', token);
+                showDashboard();
+            } else {
+                document.getElementById('auth-msg').innerText = data.error;
+            }
+        }
+
+        function showDashboard() {
+            document.getElementById('auth-section').classList.add('hidden');
+            document.getElementById('dashboard-section').classList.remove('hidden');
+            loadVaults();
+        }
+
+        function logout() {
+            token = '';
+            localStorage.removeItem('token');
+            document.getElementById('dashboard-section').classList.add('hidden');
+            document.getElementById('auth-section').classList.remove('hidden');
+        }
+
+        async function addVault() {
+            const title = document.getElementById('vault-title').value;
+            const secretData = document.getElementById('vault-secret').value;
+            const vaultSecretKey = document.getElementById('vault-key').value;
+
+            const res = await fetch(`${API_URL}/vault/add`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ title, secretData, vaultSecretKey })
+            });
+            const data = await res.json();
+            alert(data.message || data.error);
+            loadVaults();
+        }
+
+        async function loadVaults() {
+            const res = await fetch(`${API_URL}/vault/all`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const vaults = await res.json();
+            const listDiv = document.getElementById('vaults-list');
+            listDiv.innerHTML = '';
+            vaults.forEach(v => {
+                listDiv.innerHTML += `
+                    <div style="background:#334155; padding:10px; margin:8px 0; border-radius:4px;">
+                        <strong>${v.title}</strong> (ID: ${v.id})<br>
+                        <input type="password" id="key-${v.id}" placeholder="Enter Vault Key to Decrypt" style="margin:5px 0;">
+                        <button onclick="decryptVault('${v.id}')" style="background:#10b981;">Decrypt & View</button>
+                        <pre id="result-${v.id}"></pre>
+                    </div>
+                `;
+            });
+        }
+
+        async function decryptVault(id) {
+            const vaultSecretKey = document.getElementById(`key-${id}`).value;
+            const res = await fetch(`${API_URL}/vault/decrypt/${id}`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ vaultSecretKey })
+            });
+            const data = await res.json();
+            const resultPre = document.getElementById(`result-${id}`);
+            if (data.decryptedData) {
+                resultPre.innerText = JSON.stringify(data.decryptedData, null, 2);
+            } else {
+                resultPre.innerText = data.error || 'Decryption failed';
+            }
+        }
+    </script>
+</body>
+</html>
